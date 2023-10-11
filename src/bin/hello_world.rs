@@ -10,7 +10,6 @@ use objc::{msg_send, sel, sel_impl};
 use tts::*;
 
 fn main() -> Result<(), Error> {
-    env_logger::init();
     let mut tts = Tts::default()?;
     if Tts::screen_reader_available() {
         println!("A screen reader is available on this platform.");

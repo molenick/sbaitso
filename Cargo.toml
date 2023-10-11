@@ -9,6 +9,5 @@ edition = "2021"
 tts = "0.25.6"
 #[tts macOS deps]
 cocoa-foundation = "0.1.2"
-env_logger = "0.10.0"
 objc = "0.2.7"
 
