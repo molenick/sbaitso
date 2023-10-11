@@ -12,9 +12,18 @@ use objc::{msg_send, sel, sel_impl};
 fn main() -> Result<(), Error> {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let mut tts = Tts::default()?;
+    provide_nsloop(&rt);
 
-    // Provide NSLoop for tts on macOS
-    #[cfg(target_os = "macos")]
+    tts.speak("Initializing SBAITSO", false)?;
+
+    let window = MainWindow::new().unwrap();
+    window.run().unwrap();
+
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn provide_nsloop(rt: &tokio::runtime::Runtime) {
     rt.spawn(async move {
         {
             let run_loop: id = unsafe { NSRunLoop::currentRunLoop() };
@@ -23,10 +32,4 @@ fn main() -> Result<(), Error> {
             }
         }
     });
-
-    tts.speak("Initializing SBAITSO", false)?;
-    let window = MainWindow::new().unwrap();
-    window.run().unwrap();
-
-    Ok(())
 }
