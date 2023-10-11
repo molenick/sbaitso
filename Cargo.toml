@@ -6,7 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+slint = "1.2.2"
+tokio = { version = "1.33.0", features = ["full"] }
 tts = "0.25.6"
+
+[build-dependencies]
+slint-build = "1.2.2"
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 cocoa-foundation = "0.1.2"
