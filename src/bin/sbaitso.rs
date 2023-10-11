@@ -9,13 +9,6 @@ use tts::*;
 
 slint::include_modules!();
 
-#[cfg(target_os = "macos")]
-use cocoa_foundation::base::id;
-#[cfg(target_os = "macos")]
-use cocoa_foundation::foundation::NSRunLoop;
-#[cfg(target_os = "macos")]
-use objc::{msg_send, sel, sel_impl};
-
 #[derive(Clone)]
 struct State {
     power_goal: f32,
@@ -93,12 +86,12 @@ fn main() -> Result<(), Error> {
     let tts_state = state.clone();
     rt.spawn(async move {
         loop {
-            // let mut s = tts_state.lock().unwrap();
-
             if tts_state.lock().unwrap().power_goal_reached
                 && !tts_state.lock().unwrap().power_goal_announced
             {
-                tts.speak("Power goal reached", false).unwrap();
+                let power_level = tts_state.lock().unwrap().power_level.round();
+                let announcement = format!("Power goal reached: {power_level} degrees fahrenheit");
+                tts.speak(announcement, false).unwrap();
                 tts_state.lock().unwrap().power_goal_announced = true;
             }
 
@@ -117,16 +110,4 @@ fn main() -> Result<(), Error> {
     window.run().unwrap();
 
     Ok(())
-}
-
-#[cfg(target_os = "macos")]
-fn provide_nsloop(rt: &tokio::runtime::Runtime) {
-    rt.spawn(async move {
-        {
-            let run_loop: id = unsafe { NSRunLoop::currentRunLoop() };
-            unsafe {
-                let _: () = msg_send![run_loop, run];
-            }
-        }
-    });
 }
