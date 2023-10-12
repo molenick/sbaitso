@@ -9,18 +9,28 @@ use tts::*;
 
 slint::include_modules!();
 
-#[derive(Clone)]
-struct State {
+#[derive(PartialEq)]
+enum TemperatureStatus {
+    AtZero,
+    UnderGoal,
+    OverGoal,
+    AtGoal,
+    Announced,
+}
+
+struct AppState {
     temperature_goal: f32,
     temperature_level: f32,
-    temperature_goal_announced: bool,
+    temperature_status: TemperatureStatus,
+    tts: Tts,
 }
-impl State {
+impl AppState {
     fn new() -> Self {
         Self {
             temperature_goal: 0.0,
             temperature_level: 0.0,
-            temperature_goal_announced: false,
+            temperature_status: TemperatureStatus::AtZero,
+            tts: Tts::default().unwrap(),
         }
     }
 
@@ -28,22 +38,67 @@ impl State {
         self.temperature_goal = goal;
     }
 
-    // todo make decay when temperature goal is lower
-    fn update(&mut self) {
-        self.temperature_level += self.temperature_goal * 0.005;
-        self.temperature_level = self.temperature_level.clamp(0.0, self.temperature_goal);
-
-        if !self.temperature_goal_reached() {
-            self.temperature_goal_announced = false;
+    fn calc_temperature_level(&mut self) {
+        match self.temperature_status {
+            TemperatureStatus::AtZero => {}
+            TemperatureStatus::UnderGoal => {
+                self.temperature_level += self.temperature_goal * 0.005;
+                self.temperature_level = self.temperature_level.clamp(0.0, self.temperature_goal);
+            }
+            TemperatureStatus::OverGoal => {
+                self.temperature_level += self.temperature_goal * -0.005;
+                self.temperature_level = self.temperature_level.clamp(0.0, self.temperature_goal);
+            }
+            TemperatureStatus::AtGoal => {}
+            TemperatureStatus::Announced => {}
         }
     }
 
-    fn temperature_goal_reached(&self) -> bool {
-        self.temperature_level == self.temperature_goal && self.temperature_level > 0.0
+    fn calc_temperature_state(&mut self) {
+        if self.temperature_level == self.temperature_goal
+            && self.temperature_status != TemperatureStatus::Announced
+        {
+            self.temperature_status = TemperatureStatus::AtGoal;
+        }
+
+        if self.temperature_level > self.temperature_goal {
+            self.temperature_status = TemperatureStatus::OverGoal;
+        }
+
+        if self.temperature_level < self.temperature_goal {
+            self.temperature_status = TemperatureStatus::UnderGoal;
+        }
+
+        if self.temperature_level == 0.0 && self.temperature_goal == 0.0 {
+            self.temperature_status = TemperatureStatus::AtZero
+        }
+    }
+
+    fn announce(&mut self) {
+        match self.temperature_status {
+            TemperatureStatus::AtZero => {}
+            TemperatureStatus::UnderGoal => {}
+            TemperatureStatus::OverGoal => {}
+            TemperatureStatus::AtGoal => {
+                let announcement = format!(
+                    "Power goal reached: {} degrees fahrenheit",
+                    self.temperature_level.round()
+                );
+                self.tts.speak(announcement, true).unwrap();
+                self.temperature_status = TemperatureStatus::Announced;
+            }
+            TemperatureStatus::Announced => {}
+        }
+    }
+
+    fn update(&mut self) {
+        self.calc_temperature_state();
+        self.calc_temperature_level();
+        self.announce();
     }
 }
 
-fn update_gui(weak_window: Weak<MainWindow>, state: Arc<Mutex<State>>) {
+fn update_gui(weak_window: Weak<MainWindow>, state: Arc<Mutex<AppState>>) {
     // hmm, temperature_goal update was prob broken bc this got copied once but not iteratively
     // TODO Fix
     loop {
@@ -61,13 +116,7 @@ fn update_gui(weak_window: Weak<MainWindow>, state: Arc<Mutex<State>>) {
 
 fn main() -> Result<(), Error> {
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let mut tts = Tts::default()?;
-
-    let state = Arc::new(Mutex::new(State::new()));
-
-    // TODO: delay this after window run
-    tts.speak("Powering up Stove", false)?;
-
+    let state = Arc::new(Mutex::new(AppState::new()));
     let window = MainWindow::new().unwrap();
     let weak_window: Weak<MainWindow> = window.as_weak();
 
@@ -81,23 +130,6 @@ fn main() -> Result<(), Error> {
 
     let gui_state = state.clone();
     rt.spawn(async move { update_gui(weak_window, gui_state) });
-
-    let tts_state = state.clone();
-    rt.spawn(async move {
-        loop {
-            if tts_state.lock().unwrap().temperature_goal_reached()
-                && !tts_state.lock().unwrap().temperature_goal_announced
-            {
-                let temperature_level = tts_state.lock().unwrap().temperature_level.round();
-                let announcement =
-                    format!("Power goal reached: {temperature_level} degrees fahrenheit");
-                tts.speak(announcement, false).unwrap();
-                tts_state.lock().unwrap().temperature_goal_announced = true;
-            }
-
-            thread::sleep(Duration::from_millis(10));
-        }
-    });
 
     // calculate new state
     rt.spawn(async move {
