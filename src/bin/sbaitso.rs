@@ -13,7 +13,6 @@ slint::include_modules!();
 struct State {
     power_goal: f32,
     power_level: f32,
-    power_goal_reached: bool,
     power_goal_announced: bool,
 }
 impl State {
@@ -21,7 +20,6 @@ impl State {
         Self {
             power_goal: 0.0,
             power_level: 0.0,
-            power_goal_reached: false,
             power_goal_announced: false,
         }
     }
@@ -35,8 +33,7 @@ impl State {
         self.power_level += self.power_goal * 0.005;
         self.power_level = self.power_level.clamp(0.0, self.power_goal);
 
-        self.power_goal_reached = self.power_goal_reached();
-        if !self.power_goal_reached {
+        if !self.power_goal_reached() {
             self.power_goal_announced = false;
         }
     }
@@ -65,7 +62,6 @@ fn update_gui(weak_window: Weak<MainWindow>, state: Arc<Mutex<State>>) {
 fn main() -> Result<(), Error> {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let mut tts = Tts::default()?;
-    // provide_nsloop(&rt);
 
     let state = Arc::new(Mutex::new(State::new()));
 
@@ -75,18 +71,18 @@ fn main() -> Result<(), Error> {
     let window = MainWindow::new().unwrap();
     let weak_window: Weak<MainWindow> = window.as_weak();
 
-    let gui_state = state.clone();
-    rt.spawn(async move { update_gui(weak_window, gui_state) });
-
     let set_power_goal_state = state.clone();
     window.on_power_goal_changed(move |goal| {
         set_power_goal_state.lock().unwrap().set_power_goal(goal);
     });
 
+    let gui_state = state.clone();
+    rt.spawn(async move { update_gui(weak_window, gui_state) });
+
     let tts_state = state.clone();
     rt.spawn(async move {
         loop {
-            if tts_state.lock().unwrap().power_goal_reached
+            if tts_state.lock().unwrap().power_goal_reached()
                 && !tts_state.lock().unwrap().power_goal_announced
             {
                 let power_level = tts_state.lock().unwrap().power_level.round();
