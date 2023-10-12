@@ -3,18 +3,18 @@ export component MainWindow inherits Window {
     width: 270px;
     height: 480px;
 
-    in property <float> power_level;
-    property <float> power_goal;
+    in property <float> temperature_level;
+    property <float> temperature_goal;
 
-    callback power_goal_changed(float);
+    callback temperature_goal_changed(float);
 
     VerticalBox { 
         Text {
-            text: "Power Goal is \{power_goal}";
+            text: "Temperature Goal is \{temperature_goal}";
             color: white;
         }
         Text {
-            text: "Power Level is \{power_level}";
+            text: "Temperature Level is \{temperature_level}";
             color: white;
         }
         HorizontalBox {
@@ -30,12 +30,12 @@ export component MainWindow inherits Window {
                     maximum: 1000;
     
                     changed(change) => {
-                        root.power_goal = change;
-                        root.power_goal_changed(change);
+                        root.temperature_goal = change;
+                        root.temperature_goal_changed(change);
                     }
                 }
                 Text {
-                    text: "Power";
+                    text: "Temperature";
                 }
             }
         }
