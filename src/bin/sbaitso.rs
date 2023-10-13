@@ -1,7 +1,8 @@
 use std::{
+    collections::VecDeque,
     sync::{Arc, Mutex},
     thread,
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use slint::Weak;
@@ -11,7 +12,7 @@ slint::include_modules!();
 
 const TEMPERATURE_RATE: f32 = 0.25;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)] // remove clone later
 enum TemperatureStatus {
     Off,
     UnderGoal,
@@ -23,19 +24,70 @@ enum TemperatureStatus {
     CooledOffAnnounced,
 }
 
+#[derive(Clone)] // remove later
 enum UserActivity {
     Pending,
     TemperatureGoalSet,
-    TemperatureGoalAnnounced,
+    TemperatureGoalSetAnnounced,
     BurnerTurnOff,
     BurnerTurnOffAnnounced,
 }
 
+enum AnnouncementEvent {
+    AtGoal,
+    TemperatureGoalSet,
+    BurnerTurnOff,
+    CooledOff,
+}
+struct Announcement {
+    event: AnnouncementEvent,
+    created_at: SystemTime,
+    speech: String,
+}
+impl Announcement {
+    fn new(event: AnnouncementEvent, speech: String) -> Self {
+        Self {
+            event,
+            created_at: std::time::SystemTime::now(),
+            speech,
+        }
+    }
+
+    pub fn speech(&self) -> String {
+        self.speech.clone()
+    }
+}
+
+struct Announcer {
+    announcements: VecDeque<Announcement>,
+    tts: Tts,
+}
+impl Announcer {
+    fn new() -> Self {
+        Self {
+            announcements: [].into(),
+            tts: Tts::default().unwrap(),
+        }
+    }
+
+    fn push(&mut self, a: Announcement) {
+        self.announcements.push_back(a);
+    }
+
+    fn announce(&mut self) {
+        if self.announcements.front().is_some() {
+            let announcement = self.announcements.pop_front().unwrap();
+            self.tts.speak(announcement.speech(), true).unwrap();
+        }
+    }
+}
+
+#[derive(Clone)]
 struct AppState {
     temperature_goal: f32,
     temperature_level: f32,
     temperature_status: TemperatureStatus,
-    tts: Tts,
+    // tts: Tts,
     user_activity: UserActivity,
 }
 impl AppState {
@@ -44,7 +96,7 @@ impl AppState {
             temperature_goal: 0.0,
             temperature_level: 0.0,
             temperature_status: TemperatureStatus::Off,
-            tts: Tts::default().unwrap(),
+            // tts: Tts::default().unwrap(),
             user_activity: UserActivity::Pending,
         }
     }
@@ -128,14 +180,14 @@ impl AppState {
                     "Temp reached: {} degrees fahrenheit",
                     self.temperature_level.round()
                 );
-                self.tts.speak(announcement, true).unwrap();
+                // self.tts.speak(announcement, true).unwrap();
             }
             TemperatureStatus::AtGoalAnnounced => {}
             TemperatureStatus::CoolingOff => {}
             TemperatureStatus::CooledOff => {
                 self.temperature_status = TemperatureStatus::CooledOffAnnounced;
 
-                self.tts.speak("Burner has cooled down", true).unwrap();
+                // self.tts.speak("Burner has cooled down", true).unwrap();
             }
             TemperatureStatus::CooledOffAnnounced => {
                 self.temperature_status = TemperatureStatus::Off;
@@ -145,17 +197,17 @@ impl AppState {
         match self.user_activity {
             UserActivity::Pending => {}
             UserActivity::TemperatureGoalSet => {
-                self.user_activity = UserActivity::TemperatureGoalAnnounced;
+                self.user_activity = UserActivity::TemperatureGoalSetAnnounced;
                 let announcement = format!(
                     "Temp set: {} degrees fahrenheit",
                     self.temperature_goal.round()
                 );
-                self.tts.speak(announcement, true).unwrap();
+                // self.tts.speak(announcement, true).unwrap();
             }
-            UserActivity::TemperatureGoalAnnounced => self.user_activity = UserActivity::Pending,
+            UserActivity::TemperatureGoalSetAnnounced => self.user_activity = UserActivity::Pending,
             UserActivity::BurnerTurnOff => {
                 self.user_activity = UserActivity::BurnerTurnOffAnnounced;
-                self.tts.speak("Burner off, cooling down", true).unwrap();
+                // self.tts.speak("Burner off, cooling down", true).unwrap();
             }
             UserActivity::BurnerTurnOffAnnounced => self.user_activity = UserActivity::Pending,
         }
@@ -164,7 +216,7 @@ impl AppState {
     fn update(&mut self) {
         self.calc_temperature_state();
         self.calc_temperature_level();
-        self.announce();
+        // self.announce();
     }
 }
 
@@ -198,6 +250,31 @@ fn main() -> Result<(), Error> {
 
     let gui_state = state.clone();
     rt.spawn(async move { update_gui(weak_window, gui_state) });
+
+    let announce_state = state.clone();
+    let mut announcer = Announcer::new();
+    let mut prev_state = announce_state.lock().unwrap().clone();
+    rt.spawn(async move {
+        // TODO batch announcements here, announce in other task?
+        loop {
+            let state = announce_state.lock().unwrap().clone();
+            if state.temperature_goal != prev_state.temperature_goal {
+                let speech = format!(
+                    "Temp set: {} degrees fahrenheit",
+                    state.temperature_goal.round()
+                );
+                announcer.push(Announcement::new(
+                    AnnouncementEvent::TemperatureGoalSet,
+                    speech,
+                ));
+            }
+
+            announcer.announce();
+
+            prev_state = announce_state.lock().unwrap().clone();
+            thread::sleep(Duration::from_millis(10));
+        }
+    });
 
     // calculate new state
     rt.spawn(async move {
