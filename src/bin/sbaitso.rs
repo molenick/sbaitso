@@ -17,7 +17,7 @@ enum TemperatureStatus {
     UnderGoal,
     OverGoal,
     AtGoal,
-    Announced,
+    AtGoalAnnounced,
     CoolingOff,
     CooledOff,
     CooledOffAnnounced,
@@ -74,7 +74,7 @@ impl AppState {
                 self.temperature_level = self.temperature_level.clamp(0.0, self.temperature_level);
             }
             TemperatureStatus::AtGoal => {}
-            TemperatureStatus::Announced => {}
+            TemperatureStatus::AtGoalAnnounced => {}
             TemperatureStatus::CoolingOff => {
                 self.temperature_level -= TEMPERATURE_RATE;
                 self.temperature_level = self.temperature_level.clamp(0.0, self.temperature_level);
@@ -90,7 +90,7 @@ impl AppState {
     // The bugs live here, mostly.
     fn calc_temperature_state(&mut self) {
         if self.temperature_level == self.temperature_goal
-            && self.temperature_status != TemperatureStatus::Announced
+            && self.temperature_status != TemperatureStatus::AtGoalAnnounced
         {
             self.temperature_status = TemperatureStatus::AtGoal;
         }
@@ -123,14 +123,14 @@ impl AppState {
             TemperatureStatus::UnderGoal => {}
             TemperatureStatus::OverGoal => {}
             TemperatureStatus::AtGoal => {
-                self.temperature_status = TemperatureStatus::Announced;
+                self.temperature_status = TemperatureStatus::AtGoalAnnounced;
                 let announcement = format!(
                     "Temp reached: {} degrees fahrenheit",
                     self.temperature_level.round()
                 );
                 self.tts.speak(announcement, true).unwrap();
             }
-            TemperatureStatus::Announced => {}
+            TemperatureStatus::AtGoalAnnounced => {}
             TemperatureStatus::CoolingOff => {}
             TemperatureStatus::CooledOff => {
                 self.temperature_status = TemperatureStatus::CooledOffAnnounced;
