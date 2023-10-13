@@ -9,6 +9,8 @@ use tts::*;
 
 slint::include_modules!();
 
+const TEMPERATURE_RATE: f32 = 0.1;
+
 #[derive(PartialEq)]
 enum TemperatureStatus {
     AtZero,
@@ -42,12 +44,11 @@ impl AppState {
         match self.temperature_status {
             TemperatureStatus::AtZero => {}
             TemperatureStatus::UnderGoal => {
-                self.temperature_level += self.temperature_goal * 0.005;
+                self.temperature_level += TEMPERATURE_RATE;
                 self.temperature_level = self.temperature_level.clamp(0.0, self.temperature_goal);
             }
             TemperatureStatus::OverGoal => {
-                self.temperature_level += self.temperature_goal * -0.005;
-                self.temperature_level = self.temperature_level.clamp(0.0, self.temperature_goal);
+                self.temperature_level -= TEMPERATURE_RATE;
             }
             TemperatureStatus::AtGoal => {}
             TemperatureStatus::Announced => {}
@@ -81,7 +82,7 @@ impl AppState {
             TemperatureStatus::OverGoal => {}
             TemperatureStatus::AtGoal => {
                 let announcement = format!(
-                    "Power goal reached: {} degrees fahrenheit",
+                    "Temperature goal reached: {} degrees fahrenheit",
                     self.temperature_level.round()
                 );
                 self.tts.speak(announcement, true).unwrap();
@@ -120,9 +121,9 @@ fn main() -> Result<(), Error> {
     let window = MainWindow::new().unwrap();
     let weak_window: Weak<MainWindow> = window.as_weak();
 
-    let set_power_goal_state = state.clone();
+    let set_temperature_goal_state = state.clone();
     window.on_temperature_goal_changed(move |goal| {
-        set_power_goal_state
+        set_temperature_goal_state
             .lock()
             .unwrap()
             .set_temperature_goal(goal);
