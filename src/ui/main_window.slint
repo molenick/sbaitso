@@ -10,11 +10,11 @@ export component MainWindow inherits Window {
 
     VerticalBox { 
         Text {
-            text: "Temperature Goal is \{temperature_goal}";
+            text: "Temperature Goal is \{Math.round(temperature_goal)}";
             color: white;
         }
         Text {
-            text: "Temperature Level is \{temperature_level}";
+            text: "Temperature Level is \{Math.round(temperature_level)}";
             color: white;
         }
         HorizontalBox {

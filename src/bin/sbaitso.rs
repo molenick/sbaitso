@@ -18,12 +18,17 @@ enum TemperatureStatus {
     OverGoal,
     AtGoal,
     Announced,
+    CoolingOff,
+    CooledOff,
+    CooledOffAnnounced,
 }
 
 enum UserActivity {
     Pending,
     TemperatureGoalSet,
     TemperatureGoalAnnounced,
+    BurnerTurnOff,
+    BurnerTurnOffAnnounced,
 }
 
 struct AppState {
@@ -48,7 +53,12 @@ impl AppState {
         // Only update if goal is different
         if self.temperature_goal != goal {
             self.temperature_goal = goal;
-            self.user_activity = UserActivity::TemperatureGoalSet
+            if self.temperature_goal == 0.0 {
+                self.user_activity = UserActivity::BurnerTurnOff;
+                self.temperature_status = TemperatureStatus::CoolingOff
+            } else {
+                self.user_activity = UserActivity::TemperatureGoalSet;
+            }
         }
     }
 
@@ -61,9 +71,19 @@ impl AppState {
             }
             TemperatureStatus::OverGoal => {
                 self.temperature_level -= TEMPERATURE_RATE;
+                self.temperature_level = self.temperature_level.clamp(0.0, self.temperature_level);
             }
             TemperatureStatus::AtGoal => {}
             TemperatureStatus::Announced => {}
+            TemperatureStatus::CoolingOff => {
+                self.temperature_level -= TEMPERATURE_RATE;
+                self.temperature_level = self.temperature_level.clamp(0.0, self.temperature_level);
+            }
+            TemperatureStatus::CooledOff => {
+                // A bit of a cheat 🤫
+                self.temperature_level = 0.0;
+            }
+            TemperatureStatus::CooledOffAnnounced => {}
         }
     }
 
@@ -83,19 +103,17 @@ impl AppState {
             self.temperature_status = TemperatureStatus::UnderGoal;
         }
 
+        if self.temperature_goal == 0.0 {
+            self.temperature_status = TemperatureStatus::CoolingOff
+        }
+
+        if self.temperature_level < 1.0 && self.temperature_goal == 0.0 {
+            self.temperature_status = TemperatureStatus::CooledOff
+        }
+
         // If goal and level are zero, ignore other possible states and go to Off
         if self.temperature_level == 0.0 && self.temperature_goal == 0.0 {
             self.temperature_status = TemperatureStatus::Off
-        }
-    }
-
-    fn calc_user_activity(&mut self) {
-        match self.user_activity {
-            UserActivity::Pending => {}
-            UserActivity::TemperatureGoalSet => {}
-            UserActivity::TemperatureGoalAnnounced => {
-                self.user_activity = UserActivity::Pending;
-            }
         }
     }
 
@@ -107,12 +125,21 @@ impl AppState {
             TemperatureStatus::AtGoal => {
                 self.temperature_status = TemperatureStatus::Announced;
                 let announcement = format!(
-                    "Temperature goal reached: {} degrees fahrenheit",
+                    "Temp reached: {} degrees fahrenheit",
                     self.temperature_level.round()
                 );
                 self.tts.speak(announcement, true).unwrap();
             }
             TemperatureStatus::Announced => {}
+            TemperatureStatus::CoolingOff => {}
+            TemperatureStatus::CooledOff => {
+                self.temperature_status = TemperatureStatus::CooledOffAnnounced;
+
+                self.tts.speak("Burner has cooled down", true).unwrap();
+            }
+            TemperatureStatus::CooledOffAnnounced => {
+                self.temperature_status = TemperatureStatus::Off;
+            }
         }
 
         match self.user_activity {
@@ -120,18 +147,22 @@ impl AppState {
             UserActivity::TemperatureGoalSet => {
                 self.user_activity = UserActivity::TemperatureGoalAnnounced;
                 let announcement = format!(
-                    "Temperature goal set: {} degrees fahrenheit",
+                    "Temp set: {} degrees fahrenheit",
                     self.temperature_goal.round()
                 );
                 self.tts.speak(announcement, true).unwrap();
-                self.temperature_status = TemperatureStatus::Announced;
             }
             UserActivity::TemperatureGoalAnnounced => self.user_activity = UserActivity::Pending,
+            UserActivity::BurnerTurnOff => {
+                self.user_activity = UserActivity::BurnerTurnOffAnnounced;
+                self.tts.speak("Burner off, cooling down", true).unwrap();
+            }
+            UserActivity::BurnerTurnOffAnnounced => self.user_activity = UserActivity::Pending,
         }
     }
 
     fn update(&mut self) {
-        self.calc_user_activity();
+        // self.calc_user_activity();
         self.calc_temperature_state();
         self.calc_temperature_level();
         self.announce();
@@ -162,7 +193,6 @@ fn main() -> Result<(), Error> {
 
     let set_temperature_goal_state = state.clone();
     window.on_temperature_goal_changed(move |goal| {
-        println!("Updating goal: {}", &goal);
         set_temperature_goal_state
             .lock()
             .unwrap()
