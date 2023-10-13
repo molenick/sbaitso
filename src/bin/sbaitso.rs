@@ -162,7 +162,6 @@ impl AppState {
     }
 
     fn update(&mut self) {
-        // self.calc_user_activity();
         self.calc_temperature_state();
         self.calc_temperature_level();
         self.announce();
@@ -170,8 +169,6 @@ impl AppState {
 }
 
 fn update_gui(weak_window: Weak<MainWindow>, state: Arc<Mutex<AppState>>) {
-    // hmm, temperature_goal update was prob broken bc this got copied once but not iteratively
-    // TODO Fix
     loop {
         let s = state.clone();
         let temperature_level = s.lock().unwrap().temperature_level;
