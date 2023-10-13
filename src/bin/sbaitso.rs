@@ -13,11 +13,17 @@ const TEMPERATURE_RATE: f32 = 0.1;
 
 #[derive(PartialEq)]
 enum TemperatureStatus {
-    AtZero,
+    Off,
     UnderGoal,
     OverGoal,
     AtGoal,
     Announced,
+}
+
+enum UserActivity {
+    Pending,
+    TemperatureGoalSet,
+    TemperatureGoalAnnounced,
 }
 
 struct AppState {
@@ -25,24 +31,30 @@ struct AppState {
     temperature_level: f32,
     temperature_status: TemperatureStatus,
     tts: Tts,
+    user_activity: UserActivity,
 }
 impl AppState {
     fn new() -> Self {
         Self {
             temperature_goal: 0.0,
             temperature_level: 0.0,
-            temperature_status: TemperatureStatus::AtZero,
+            temperature_status: TemperatureStatus::Off,
             tts: Tts::default().unwrap(),
+            user_activity: UserActivity::Pending,
         }
     }
 
     fn set_temperature_goal(&mut self, goal: f32) {
-        self.temperature_goal = goal;
+        // Only update if goal is different
+        if self.temperature_goal != goal {
+            self.temperature_goal = goal;
+            self.user_activity = UserActivity::TemperatureGoalSet
+        }
     }
 
     fn calc_temperature_level(&mut self) {
         match self.temperature_status {
-            TemperatureStatus::AtZero => {}
+            TemperatureStatus::Off => {}
             TemperatureStatus::UnderGoal => {
                 self.temperature_level += TEMPERATURE_RATE;
                 self.temperature_level = self.temperature_level.clamp(0.0, self.temperature_goal);
@@ -55,6 +67,7 @@ impl AppState {
         }
     }
 
+    // The bugs live here, mostly.
     fn calc_temperature_state(&mut self) {
         if self.temperature_level == self.temperature_goal
             && self.temperature_status != TemperatureStatus::Announced
@@ -70,29 +83,55 @@ impl AppState {
             self.temperature_status = TemperatureStatus::UnderGoal;
         }
 
+        // If goal and level are zero, ignore other possible states and go to Off
         if self.temperature_level == 0.0 && self.temperature_goal == 0.0 {
-            self.temperature_status = TemperatureStatus::AtZero
+            self.temperature_status = TemperatureStatus::Off
+        }
+    }
+
+    fn calc_user_activity(&mut self) {
+        match self.user_activity {
+            UserActivity::Pending => {}
+            UserActivity::TemperatureGoalSet => {}
+            UserActivity::TemperatureGoalAnnounced => {
+                self.user_activity = UserActivity::Pending;
+            }
         }
     }
 
     fn announce(&mut self) {
         match self.temperature_status {
-            TemperatureStatus::AtZero => {}
+            TemperatureStatus::Off => {}
             TemperatureStatus::UnderGoal => {}
             TemperatureStatus::OverGoal => {}
             TemperatureStatus::AtGoal => {
+                self.temperature_status = TemperatureStatus::Announced;
                 let announcement = format!(
                     "Temperature goal reached: {} degrees fahrenheit",
                     self.temperature_level.round()
                 );
                 self.tts.speak(announcement, true).unwrap();
-                self.temperature_status = TemperatureStatus::Announced;
             }
             TemperatureStatus::Announced => {}
+        }
+
+        match self.user_activity {
+            UserActivity::Pending => {}
+            UserActivity::TemperatureGoalSet => {
+                self.user_activity = UserActivity::TemperatureGoalAnnounced;
+                let announcement = format!(
+                    "Temperature goal set: {} degrees fahrenheit",
+                    self.temperature_goal.round()
+                );
+                self.tts.speak(announcement, true).unwrap();
+                self.temperature_status = TemperatureStatus::Announced;
+            }
+            UserActivity::TemperatureGoalAnnounced => self.user_activity = UserActivity::Pending,
         }
     }
 
     fn update(&mut self) {
+        self.calc_user_activity();
         self.calc_temperature_state();
         self.calc_temperature_level();
         self.announce();
@@ -123,6 +162,7 @@ fn main() -> Result<(), Error> {
 
     let set_temperature_goal_state = state.clone();
     window.on_temperature_goal_changed(move |goal| {
+        println!("Updating goal: {}", &goal);
         set_temperature_goal_state
             .lock()
             .unwrap()
