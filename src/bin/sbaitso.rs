@@ -9,7 +9,7 @@ use tts::*;
 
 slint::include_modules!();
 
-const TEMPERATURE_RATE: f32 = 0.1;
+const TEMPERATURE_RATE: f32 = 0.25;
 
 #[derive(PartialEq)]
 enum TemperatureStatus {
